@@ -75,7 +75,6 @@ export default function Home(): React.JSX.Element {
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100">
       <div className="container mx-auto px-4 py-8 max-w-7xl">
         <Header />
-        <ApiUsageBanner usage={usage} />
         
         <div className="grid lg:grid-cols-2 gap-8">
           <InputSection
@@ -127,7 +126,7 @@ const Header: React.FC = () => (
       </h1>
     </div>
     <p className="text-lg text-gray-600 mb-4">
-      Powered by Alibaba Cloud Qwen-VL-Max (Multi-modal Vision Model)
+      Powered by Alibaba Cloud Qwen-VL-Max with Object Detection
     </p>
     <div className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-50 border border-emerald-200 rounded-full">
       <div className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse" />
@@ -235,34 +234,6 @@ const DisplaySection: React.FC<DisplaySectionProps> = ({
     {description && <AnalysisResultsCard description={description} usage={usage} />}
   </div>
 );
-
-/**
- * API Usage Banner Component
- */
-const ApiUsageBanner: React.FC<{ usage: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number } | null }> = ({ usage }) => {
-  const totalTokens = usage?.total_tokens ?? 0;
-  const requestsLeft = Math.max(0, 10 - Math.floor(totalTokens / 1000)); // Example calculation
-  
-  return (
-    <div className="bg-green-600 text-white px-4 py-2 rounded-lg mb-6">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-          </svg>
-          <span className="font-medium">API Usage: {totalTokens > 0 ? `${totalTokens} tokens` : 'No usage yet'}</span>
-          <div className="bg-white/20 px-2 py-1 rounded text-sm">
-            ℹ️
-          </div>
-        </div>
-        <div className="text-sm">
-          <span>{requestsLeft} Requests Left</span>
-          <span className="ml-4">Reset in 24h 0m</span>
-        </div>
-      </div>
-    </div>
-  );
-};
 
 /**
  * Remaining component implementations would follow similar patterns...
@@ -409,15 +380,15 @@ const AnalysisResultsCard: React.FC<{
         <h4 className="text-sm font-semibold text-gray-600 mb-3">API Usage</h4>
         <div className="grid grid-cols-3 gap-4">
           <div className="text-center p-3 bg-gray-50 rounded-lg">
-            <div className="text-lg font-bold text-gray-800">{usage.prompt_tokens ?? 0}</div>
+            <div className="text-lg font-bold text-gray-800">{isNaN(usage.prompt_tokens || 0) ? 0 : (usage.prompt_tokens || 0)}</div>
             <div className="text-xs text-gray-500">Prompt</div>
           </div>
           <div className="text-center p-3 bg-gray-50 rounded-lg">
-            <div className="text-lg font-bold text-gray-800">{usage.completion_tokens ?? 0}</div>
+            <div className="text-lg font-bold text-gray-800">{isNaN(usage.completion_tokens || 0) ? 0 : (usage.completion_tokens || 0)}</div>
             <div className="text-xs text-gray-500">Response</div>
           </div>
           <div className="text-center p-3 bg-blue-50 rounded-lg">
-            <div className="text-lg font-bold text-blue-600">{usage.total_tokens ?? 0}</div>
+            <div className="text-lg font-bold text-blue-600">{isNaN(usage.total_tokens || 0) ? 0 : (usage.total_tokens || 0)}</div>
             <div className="text-xs text-blue-500">Total</div>
           </div>
         </div>

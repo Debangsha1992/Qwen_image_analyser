@@ -150,7 +150,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({
       description,
       boxes,
-      usage: completion.usage || { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 },
+      usage: completion.usage,
       model: API_CONFIG.model,
       boundingBoxesEnabled: enableBoundingBoxes,
     });

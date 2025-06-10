@@ -83,8 +83,8 @@ export const useImageAnalysis = (): UseImageAnalysisReturn => {
 
       const data = response.data;
       setDescription(data.description);
-      setBoundingBoxes(data.boxes ?? []);
-      setUsage(data.usage ?? null);
+      setBoundingBoxes(data.boxes || []);
+      setUsage(data.usage || null);
     } catch (err: unknown) {
       const errorResponse = err as ErrorResponse;
       const errorMessage = errorResponse.response?.data?.error || 'Failed to analyze image';
