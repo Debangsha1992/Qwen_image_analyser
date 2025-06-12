@@ -13,6 +13,13 @@ export interface BoundingBox {
   confidence?: number;
 }
 
+export interface SegmentationPolygon {
+  label: string;
+  points: Array<{ x: number; y: number }>;
+  confidence?: number;
+  pixelCoverage?: number; // Percentage of image covered by this segment
+}
+
 export interface ErrorResponse {
   response?: {
     data?: {
@@ -24,9 +31,11 @@ export interface ErrorResponse {
 export interface AnalysisResponse {
   description: string;
   boxes?: BoundingBox[];
+  segments?: SegmentationPolygon[];
   usage?: ApiUsage;
   model?: string;
   boundingBoxesEnabled?: boolean;
+  segmentationEnabled?: boolean;
 }
 
 export interface ImageProcessingConfig {
@@ -36,4 +45,5 @@ export interface ImageProcessingConfig {
   maxFileSize: number;
 }
 
-export type InputMethod = 'url' | 'file'; 
+export type InputMethod = 'url' | 'file';
+export type AnalysisMode = 'detection' | 'segmentation'; 

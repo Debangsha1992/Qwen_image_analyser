@@ -1,4 +1,4 @@
-import { BoundingBox, ImageProcessingConfig } from '@/types/api';
+import { BoundingBox, ImageProcessingConfig, SegmentationPolygon } from '@/types/api';
 
 // Configuration constants
 export const IMAGE_CONFIG: ImageProcessingConfig = {
@@ -110,6 +110,74 @@ export const drawBoundingBoxes = (
     ctx.textBaseline = 'top';
     ctx.fillText(labelText, x + 4, y - labelHeight + 3);
   });
+};
+
+/**
+ * Draws segmentation polygons on canvas with labels and pixel coverage
+ */
+export const drawSegmentationPolygons = (
+  ctx: CanvasRenderingContext2D,
+  segments: SegmentationPolygon[],
+  scale: number
+): void => {
+  segments.forEach((segment, index) => {
+    const color = DETECTION_COLORS[index % DETECTION_COLORS.length];
+    
+    if (segment.points.length < 3) return; // Need at least 3 points for a polygon
+
+    // Draw polygon outline
+    ctx.beginPath();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2;
+    
+    // Move to first point
+    const firstPoint = segment.points[0];
+    ctx.moveTo(firstPoint.x * scale, firstPoint.y * scale);
+    
+    // Draw lines to all other points
+    for (let i = 1; i < segment.points.length; i++) {
+      const point = segment.points[i];
+      ctx.lineTo(point.x * scale, point.y * scale);
+    }
+    
+    // Close the polygon
+    ctx.closePath();
+    
+    // Fill with semi-transparent color
+    ctx.fillStyle = color + '40'; // Add 40 for 25% opacity
+    ctx.fill();
+    
+    // Stroke the outline
+    ctx.stroke();
+    
+    // Calculate polygon center for label placement
+    const centerX = segment.points.reduce((sum, point) => sum + point.x, 0) / segment.points.length * scale;
+    const centerY = segment.points.reduce((sum, point) => sum + point.y, 0) / segment.points.length * scale;
+    
+    // Draw label with pixel coverage information
+    const labelText = segment.pixelCoverage !== undefined
+      ? `${segment.label} (${segment.pixelCoverage.toFixed(1)}%)`
+      : segment.label;
+    
+    ctx.font = 'bold 12px Inter, system-ui, sans-serif';
+    const textMetrics = ctx.measureText(labelText);
+    const labelWidth = textMetrics.width + 8;
+    const labelHeight = 18;
+    
+    // Label background
+    ctx.fillStyle = color;
+    ctx.fillRect(centerX - labelWidth/2, centerY - labelHeight/2, labelWidth, labelHeight);
+    
+    // Label text
+    ctx.fillStyle = '#FFFFFF';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(labelText, centerX, centerY);
+  });
+  
+  // Reset text alignment
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'top';
 };
 
 /**

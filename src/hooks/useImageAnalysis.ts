@@ -1,36 +1,49 @@
 import { useState, useCallback } from 'react';
 import axios from 'axios';
-import { AnalysisResponse, ErrorResponse, BoundingBox, ApiUsage } from '@/types/api';
+import { AnalysisResponse, ErrorResponse, BoundingBox, SegmentationPolygon, ApiUsage, AnalysisMode } from '@/types/api';
 import { validateImageFile, isValidImageUrl } from '@/utils/imageProcessing';
+
+interface RateLimitInfo {
+  resetIn: string;
+  resetTime: string;
+  remaining: number;
+}
 
 interface UseImageAnalysisReturn {
   description: string;
   boxes: BoundingBox[];
+  segments: SegmentationPolygon[];
   usage: ApiUsage | null;
   loading: boolean;
   error: string;
+  rateLimitInfo: RateLimitInfo | null;
   analyzeImage: (
     file: File | null,
     imageUrl: string,
-    enableBoundingBoxes: boolean
+    analysisMode: AnalysisMode,
+    imageWidth?: number,
+    imageHeight?: number
   ) => Promise<void>;
   clearResults: () => void;
 }
 
 /**
  * Custom hook for image analysis functionality
- * Handles API calls and state management for image analysis
+ * Handles API calls and state management for image analysis with both object detection and segmentation
  */
 export const useImageAnalysis = (): UseImageAnalysisReturn => {
   const [description, setDescription] = useState('');
   const [boxes, setBoundingBoxes] = useState<BoundingBox[]>([]);
+  const [segments, setSegments] = useState<SegmentationPolygon[]>([]);
   const [usage, setUsage] = useState<ApiUsage | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [rateLimitInfo, setRateLimitInfo] = useState<RateLimitInfo | null>(null);
 
   const clearResults = useCallback(() => {
     setDescription('');
     setBoundingBoxes([]);
+    setSegments([]);
     setUsage(null);
     setError('');
   }, []);
@@ -38,7 +51,9 @@ export const useImageAnalysis = (): UseImageAnalysisReturn => {
   const analyzeImage = useCallback(async (
     file: File | null,
     imageUrl: string,
-    enableBoundingBoxes: boolean
+    analysisMode: AnalysisMode,
+    imageWidth: number = 800,
+    imageHeight: number = 600
   ): Promise<void> => {
     // Input validation
     if (!file && !imageUrl.trim()) {
@@ -61,6 +76,7 @@ export const useImageAnalysis = (): UseImageAnalysisReturn => {
     setError('');
     setDescription('');
     setBoundingBoxes([]);
+    setSegments([]);
     setUsage(null);
 
     try {
@@ -72,7 +88,14 @@ export const useImageAnalysis = (): UseImageAnalysisReturn => {
         formData.append('imageUrl', imageUrl.trim());
       }
 
+      // Set analysis mode flags
+      const enableBoundingBoxes = analysisMode === 'detection';
+      const enableSegmentation = analysisMode === 'segmentation';
+      
       formData.append('enableBoundingBoxes', enableBoundingBoxes.toString());
+      formData.append('enableSegmentation', enableSegmentation.toString());
+      formData.append('imageWidth', imageWidth.toString());
+      formData.append('imageHeight', imageHeight.toString());
 
       const response = await axios.post<AnalysisResponse>('/api/describe', formData, {
         headers: {
@@ -84,7 +107,35 @@ export const useImageAnalysis = (): UseImageAnalysisReturn => {
       const data = response.data;
       setDescription(data.description);
       setBoundingBoxes(data.boxes || []);
+      setSegments(data.segments || []);
       setUsage(data.usage || null);
+
+      // Extract rate limit info from headers
+      const remaining = response.headers['x-ratelimit-remaining'];
+      const resetTime = response.headers['x-ratelimit-reset'];
+      
+      if (remaining && resetTime) {
+        const resetTimeMs = parseInt(resetTime) * 1000;
+        const now = Date.now();
+        const timeUntilReset = resetTimeMs - now;
+        
+        let resetIn = 'now';
+        if (timeUntilReset > 0) {
+          const hours = Math.floor(timeUntilReset / (1000 * 60 * 60));
+          const minutes = Math.floor((timeUntilReset % (1000 * 60 * 60)) / (1000 * 60));
+          if (hours > 0) {
+            resetIn = `${hours}h ${minutes}m`;
+          } else {
+            resetIn = `${minutes}m`;
+          }
+        }
+        
+        setRateLimitInfo({
+          remaining: parseInt(remaining),
+          resetTime: new Date(resetTimeMs).toISOString(),
+          resetIn
+        });
+      }
     } catch (err: unknown) {
       const errorResponse = err as ErrorResponse;
       const errorMessage = errorResponse.response?.data?.error || 'Failed to analyze image';
@@ -98,9 +149,11 @@ export const useImageAnalysis = (): UseImageAnalysisReturn => {
   return {
     description,
     boxes,
+    segments,
     usage,
     loading,
     error,
+    rateLimitInfo,
     analyzeImage,
     clearResults,
   };

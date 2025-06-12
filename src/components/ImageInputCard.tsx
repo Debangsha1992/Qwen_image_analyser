@@ -1,4 +1,5 @@
 import React from 'react';
+import { motion } from 'framer-motion';
 import { InputMethod } from '@/types/api';
 
 interface ImageInputCardProps {
@@ -25,30 +26,41 @@ export const ImageInputCard: React.FC<ImageInputCardProps> = ({
   onImageUrlChange,
   onExampleImage,
 }) => (
-  <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-6">
+  <motion.div 
+    className="bg-white rounded-2xl shadow-lg border border-gray-100 p-6"
+    initial={{ opacity: 0, y: 20 }}
+    animate={{ opacity: 1, y: 0 }}
+    transition={{ duration: 0.4 }}
+  >
     <h2 className="text-xl font-semibold text-gray-800 mb-4">Image Input</h2>
     
     <div className="flex gap-2 mb-6">
-      <button
+      <motion.button
         onClick={() => setInputMethod('file')}
         className={`flex-1 py-2 px-4 rounded-lg font-medium transition-all ${
           inputMethod === 'file' 
             ? 'bg-blue-600 text-white shadow-md' 
             : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
         }`}
+        whileHover={{ scale: 1.02 }}
+        whileTap={{ scale: 0.98 }}
+        transition={{ type: "spring", stiffness: 400 }}
       >
         Upload File
-      </button>
-      <button
+      </motion.button>
+      <motion.button
         onClick={() => setInputMethod('url')}
         className={`flex-1 py-2 px-4 rounded-lg font-medium transition-all ${
           inputMethod === 'url' 
             ? 'bg-blue-600 text-white shadow-md' 
             : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
         }`}
+        whileHover={{ scale: 1.02 }}
+        whileTap={{ scale: 0.98 }}
+        transition={{ type: "spring", stiffness: 400 }}
       >
         Image URL
-      </button>
+      </motion.button>
     </div>
 
     {inputMethod === 'file' && (
@@ -66,7 +78,7 @@ export const ImageInputCard: React.FC<ImageInputCardProps> = ({
         onExampleImage={onExampleImage}
       />
     )}
-  </div>
+  </motion.div>
 );
 
 /**

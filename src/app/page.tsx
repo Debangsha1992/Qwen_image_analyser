@@ -2,28 +2,32 @@
 
 import { useState, useRef } from 'react';
 import ReactMarkdown from 'react-markdown';
-import { InputMethod } from '@/types/api';
+import { motion } from 'framer-motion';
+import { InputMethod, AnalysisMode } from '@/types/api';
 import { useImageAnalysis } from '@/hooks/useImageAnalysis';
 import { ImageCanvas } from '@/components/ImageCanvas';
 import { ObjectDetectionSummary } from '@/components/ObjectDetectionSummary';
 import { ImageInputCard } from '@/components/ImageInputCard';
+import { RateLimitCounter } from '@/components/RateLimitCounter';
+import { BoxSelectionProvider } from '@/context/BoxSelectionContext';
 
 const EXAMPLE_IMAGE_URL = 'https://dashscope.oss-cn-beijing.aliyuncs.com/images/dog_and_girl.jpeg';
 
 /**
  * Main application component for AI image analysis
- * Provides file upload, URL input, and object detection capabilities
+ * Provides file upload, URL input, and object detection/segmentation capabilities
  */
 export default function Home(): React.JSX.Element {
   // State management
   const [imageUrl, setImageUrl] = useState('');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [enableBoundingBoxes, setEnableBoundingBoxes] = useState(true);
+  const [analysisMode, setAnalysisMode] = useState<AnalysisMode>('detection');
   const [currentImage, setCurrentImage] = useState<string>('');
   const [inputMethod, setInputMethod] = useState<InputMethod>('file');
+  const [selectedBoxIndices, setSelectedBoxIndices] = useState<Set<number>>(new Set());
 
   // Hooks
-  const { description, boxes, usage, loading, error, analyzeImage, clearResults } = useImageAnalysis();
+  const { description, boxes, segments, usage, loading, error, rateLimitInfo, analyzeImage, clearResults } = useImageAnalysis();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Event handlers
@@ -48,7 +52,7 @@ export default function Home(): React.JSX.Element {
 
   const handleAnalyze = async (e: React.FormEvent): Promise<void> => {
     e.preventDefault();
-    await analyzeImage(selectedFile, imageUrl, enableBoundingBoxes);
+    await analyzeImage(selectedFile, imageUrl, analysisMode);
   };
 
   const handleExampleImage = (): void => {
@@ -66,45 +70,147 @@ export default function Home(): React.JSX.Element {
     setSelectedFile(null);
     setCurrentImage('');
     clearResults();
+    setSelectedBoxIndices(new Set());
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
   };
 
+  const toggleBoxSelection = (index: number): void => {
+    setSelectedBoxIndices(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(index)) {
+        newSet.delete(index);
+      } else {
+        newSet.clear(); // Only show one box at a time
+        newSet.add(index);
+      }
+      return newSet;
+    });
+  };
+
+  const clearBoxSelection = (): void => {
+    setSelectedBoxIndices(new Set());
+  };
+
+  // Get current objects based on analysis mode
+  const currentObjects = analysisMode === 'segmentation' ? segments : boxes;
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100">
-      <div className="container mx-auto px-4 py-8 max-w-7xl">
-        <Header />
+      <div className="container mx-auto px-2 py-4 max-w-[95vw]">
+        <motion.div
+          initial={{ opacity: 0, y: -20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6 }}
+        >
+          <Header />
+        </motion.div>
         
-        <div className="grid lg:grid-cols-2 gap-8">
-          <InputSection
-            inputMethod={inputMethod}
-            setInputMethod={setInputMethod}
-            imageUrl={imageUrl}
-            selectedFile={selectedFile}
-            enableBoundingBoxes={enableBoundingBoxes}
-            loading={loading}
-            fileInputRef={fileInputRef}
-            onFileSelect={handleFileSelect}
-            onImageUrlChange={handleImageUrlChange}
-            onEnableBoundingBoxesChange={setEnableBoundingBoxes}
-            onAnalyze={handleAnalyze}
-            onExampleImage={handleExampleImage}
-            onClearImage={clearImage}
-          />
-          
-          <DisplaySection
-            currentImage={currentImage}
-            boxes={boxes}
-            enableBoundingBoxes={enableBoundingBoxes}
-            loading={loading}
-            error={error}
-            description={description}
-            usage={usage}
-          />
-        </div>
+        {/* Top Section - Input, Options, API Usage, and Analyze Button */}
+        <motion.div 
+          className="mb-4"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6, delay: 0.2 }}
+        >
+          <div className="grid xl:grid-cols-3 gap-4">
+            <div className="xl:col-span-1">
+              <ImageInputCard
+                inputMethod={inputMethod}
+                setInputMethod={setInputMethod}
+                imageUrl={imageUrl}
+                selectedFile={selectedFile}
+                fileInputRef={fileInputRef}
+                onFileSelect={handleFileSelect}
+                onImageUrlChange={handleImageUrlChange}
+                onExampleImage={handleExampleImage}
+              />
+            </div>
+            
+            <div className="xl:col-span-1">
+              <OptionsCard
+                analysisMode={analysisMode}
+                onAnalysisModeChange={setAnalysisMode}
+              />
+            </div>
+            
+            <div className="xl:col-span-1 space-y-4">
+              <RateLimitCounter
+                remaining={rateLimitInfo?.remaining}
+                total={10}
+                resetTime={rateLimitInfo ? new Date(rateLimitInfo.resetTime).getTime() : undefined}
+              />
+              <ActionButtons
+                loading={loading}
+                hasInput={!!(selectedFile || imageUrl)}
+                analysisMode={analysisMode}
+                onAnalyze={handleAnalyze}
+                onClearImage={clearImage}
+              />
+            </div>
+          </div>
+        </motion.div>
         
-        <InstructionsSection />
+        {/* Main Content Section */}
+        <BoxSelectionProvider
+          boxes={analysisMode === 'detection' ? boxes : []}
+          selectedBoxIndices={selectedBoxIndices}
+          onToggleBox={toggleBoxSelection}
+        >
+          <motion.div 
+            className="grid xl:grid-cols-3 gap-4"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6, delay: 0.4 }}
+          >
+            {/* Sticky Image Section - Spans Two Columns */}
+            <motion.div
+              initial={{ opacity: 0, x: -20 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ duration: 0.5, delay: 0.5 }}
+              className="xl:col-span-2"
+            >
+              <div className="sticky top-4">
+                <ImageDisplayCard
+                  currentImage={currentImage}
+                  boxes={analysisMode === 'detection' ? boxes : []}
+                  segments={analysisMode === 'segmentation' ? segments : []}
+                  analysisMode={analysisMode}
+                  selectedBoxIndices={selectedBoxIndices}
+                  onToggleBox={toggleBoxSelection}
+                  onClearSelection={clearBoxSelection}
+                />
+              </div>
+            </motion.div>
+            
+            {/* Scrollable Analysis Section - Right Column */}
+            <motion.div
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ duration: 0.5, delay: 0.6 }}
+              className="xl:col-span-1"
+            >
+              <AnalysisSection
+                loading={loading}
+                error={error}
+                description={description}
+                usage={usage}
+                boxes={analysisMode === 'detection' ? boxes : []}
+                segments={analysisMode === 'segmentation' ? segments : []}
+                selectedBoxIndices={selectedBoxIndices}
+              />
+            </motion.div>
+          </motion.div>
+        </BoxSelectionProvider>
+        
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6, delay: 0.7 }}
+        >
+          <InstructionsSection />
+        </motion.div>
       </div>
     </div>
   );
@@ -114,8 +220,8 @@ export default function Home(): React.JSX.Element {
  * Application header component
  */
 const Header: React.FC = () => (
-  <div className="text-center mb-12">
-    <div className="inline-flex items-center gap-3 mb-4">
+  <div className="text-center mb-6">
+    <div className="inline-flex items-center gap-3 mb-3">
       <div className="w-12 h-12 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-xl flex items-center justify-center">
         <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
@@ -126,7 +232,7 @@ const Header: React.FC = () => (
       </h1>
     </div>
     <p className="text-lg text-gray-600 mb-4">
-      Powered by Alibaba Cloud Qwen-VL-Max with Object Detection
+      Powered by Alibaba Cloud Qwen-VL-Max with Object Detection & Segmentation
     </p>
     <div className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-50 border border-emerald-200 rounded-full">
       <div className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse" />
@@ -136,144 +242,84 @@ const Header: React.FC = () => (
 );
 
 /**
- * Input section props interface
+ * Analysis section props interface
  */
-interface InputSectionProps {
-  inputMethod: InputMethod;
-  setInputMethod: (method: InputMethod) => void;
-  imageUrl: string;
-  selectedFile: File | null;
-  enableBoundingBoxes: boolean;
-  loading: boolean;
-  fileInputRef: React.RefObject<HTMLInputElement | null>;
-  onFileSelect: (e: React.ChangeEvent<HTMLInputElement>) => void;
-  onImageUrlChange: (url: string) => void;
-  onEnableBoundingBoxesChange: (enabled: boolean) => void;
-  onAnalyze: (e: React.FormEvent) => void;
-  onExampleImage: () => void;
-  onClearImage: () => void;
-}
-
-/**
- * Input section component for file uploads and settings
- */
-const InputSection: React.FC<InputSectionProps> = ({
-  inputMethod,
-  setInputMethod,
-  imageUrl,
-  selectedFile,
-  enableBoundingBoxes,
-  loading,
-  fileInputRef,
-  onFileSelect,
-  onImageUrlChange,
-  onEnableBoundingBoxesChange,
-  onAnalyze,
-  onExampleImage,
-  onClearImage,
-}) => (
-  <div className="space-y-6">
-    <ImageInputCard
-      inputMethod={inputMethod}
-      setInputMethod={setInputMethod}
-      imageUrl={imageUrl}
-      selectedFile={selectedFile}
-      fileInputRef={fileInputRef}
-      onFileSelect={onFileSelect}
-      onImageUrlChange={onImageUrlChange}
-      onExampleImage={onExampleImage}
-    />
-    
-    <OptionsCard
-      enableBoundingBoxes={enableBoundingBoxes}
-      onEnableBoundingBoxesChange={onEnableBoundingBoxesChange}
-    />
-    
-    <ActionButtons
-      loading={loading}
-      hasInput={!!(selectedFile || imageUrl)}
-      enableBoundingBoxes={enableBoundingBoxes}
-      onAnalyze={onAnalyze}
-      onClearImage={onClearImage}
-    />
-  </div>
-);
-
-/**
- * Display section props interface
- */
-interface DisplaySectionProps {
-  currentImage: string;
-  boxes: Array<{ label: string; x: number; y: number; width: number; height: number; confidence?: number }>;
-  enableBoundingBoxes: boolean;
+interface AnalysisSectionProps {
   loading: boolean;
   error: string;
   description: string;
   usage: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number } | null;
+  boxes: Array<{ label: string; x: number; y: number; width: number; height: number; confidence?: number }>;
+  segments: Array<{ label: string; points: Array<{ x: number; y: number }>; confidence?: number; pixelCoverage?: number }>;
+  selectedBoxIndices: Set<number>;
 }
 
 /**
- * Display section for results and canvas
+ * Analysis section for scrollable content
  */
-const DisplaySection: React.FC<DisplaySectionProps> = ({
-  currentImage,
-  boxes,
-  enableBoundingBoxes,
+const AnalysisSection: React.FC<AnalysisSectionProps> = ({
   loading,
   error,
   description,
   usage,
+  boxes,
+  segments,
+  selectedBoxIndices,
 }) => (
   <div className="space-y-6">
-    {currentImage && (
-      <ImageDisplayCard currentImage={currentImage} boxes={boxes} enableBoundingBoxes={enableBoundingBoxes} />
-    )}
-    
     {loading && <LoadingCard />}
     {error && <ErrorCard error={error} />}
-    {description && <AnalysisResultsCard description={description} usage={usage} />}
+    {description && <AnalysisResultsCard description={description} usage={usage} boxes={boxes} segments={segments} selectedBoxIndices={selectedBoxIndices} />}
   </div>
 );
 
-/**
- * Remaining component implementations would follow similar patterns...
- * Due to length constraints, I'll create the essential smaller components
- */
-
-// Additional component implementations would be extracted similarly
-// following the same patterns for maintainability and readability
-
-
-
 const OptionsCard: React.FC<{ 
-  enableBoundingBoxes: boolean; 
-  onEnableBoundingBoxesChange: (enabled: boolean) => void; 
-}> = ({ enableBoundingBoxes, onEnableBoundingBoxesChange }) => (
+  analysisMode: AnalysisMode; 
+  onAnalysisModeChange: (mode: AnalysisMode) => void; 
+}> = ({ analysisMode, onAnalysisModeChange }) => (
   <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-6">
     <h3 className="text-lg font-semibold text-gray-800 mb-4">Analysis Options</h3>
-    <label className="flex items-center gap-3 cursor-pointer">
-      <input
-        type="checkbox"
-        checked={enableBoundingBoxes}
-        onChange={(e) => onEnableBoundingBoxesChange(e.target.checked)}
-        className="w-5 h-5 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500"
-      />
-      <div>
-        <span className="font-medium text-gray-700">Object Detection</span>
-        <p className="text-sm text-gray-500">Request detailed object descriptions with coordinates</p>
-        <p className="text-xs text-amber-600">Note: Visual bounding boxes depend on model response format</p>
-      </div>
-    </label>
+    <div className="space-y-3">
+      <label className="flex items-center gap-3 cursor-pointer">
+        <input
+          type="radio"
+          name="analysisMode"
+          value="detection"
+          checked={analysisMode === 'detection'}
+          onChange={() => onAnalysisModeChange('detection')}
+          className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 focus:ring-blue-500"
+        />
+        <div>
+          <span className="font-medium text-gray-700">Object Detection</span>
+          <p className="text-sm text-gray-500">Detect objects with bounding boxes and coordinates</p>
+        </div>
+      </label>
+      
+      <label className="flex items-center gap-3 cursor-pointer">
+        <input
+          type="radio"
+          name="analysisMode"
+          value="segmentation"
+          checked={analysisMode === 'segmentation'}
+          onChange={() => onAnalysisModeChange('segmentation')}
+          className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 focus:ring-blue-500"
+        />
+        <div>
+          <span className="font-medium text-gray-700">Segmentation</span>
+          <p className="text-sm text-gray-500">Segment objects with precise boundaries and pixel coverage</p>
+        </div>
+      </label>
+    </div>
   </div>
 );
 
 const ActionButtons: React.FC<{
   loading: boolean;
   hasInput: boolean;
-  enableBoundingBoxes: boolean;
+  analysisMode: AnalysisMode;
   onAnalyze: (e: React.FormEvent) => void;
   onClearImage: () => void;
-}> = ({ loading, hasInput, enableBoundingBoxes, onAnalyze, onClearImage }) => (
+}> = ({ loading, hasInput, analysisMode, onAnalyze, onClearImage }) => (
   <div className="flex gap-3">
     <button
       onClick={onAnalyze}
@@ -286,7 +332,7 @@ const ActionButtons: React.FC<{
           Analyzing...
         </span>
       ) : (
-        `🔍 Analyze Image${enableBoundingBoxes ? ' + Objects' : ''}`
+        `🔍 ${analysisMode === 'segmentation' ? 'Segment Image' : 'Detect Objects'}`
       )}
     </button>
     
@@ -304,98 +350,207 @@ const ActionButtons: React.FC<{
 const ImageDisplayCard: React.FC<{
   currentImage: string;
   boxes: Array<{ label: string; x: number; y: number; width: number; height: number; confidence?: number }>;
-  enableBoundingBoxes: boolean;
-}> = ({ currentImage, boxes, enableBoundingBoxes }) => (
-  <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-6">
-    <h3 className="text-lg font-semibold text-gray-800 mb-4">
-      Image {enableBoundingBoxes && boxes.length > 0 && '+ Object Detection'}
-    </h3>
-    <div className="flex justify-center">
-      <ImageCanvas imageUrl={currentImage} boxes={boxes} />
+  segments: Array<{ label: string; points: Array<{ x: number; y: number }>; confidence?: number; pixelCoverage?: number }>;
+  analysisMode: AnalysisMode;
+  selectedBoxIndices: Set<number>;
+  onToggleBox: (index: number) => void;
+  onClearSelection: () => void;
+}> = ({ currentImage, boxes, segments, analysisMode, selectedBoxIndices, onToggleBox, onClearSelection }) => {
+  const hasResults = (analysisMode === 'detection' && boxes.length > 0) || (analysisMode === 'segmentation' && segments.length > 0);
+  
+  return (
+    <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-6">
+      <div className="flex justify-between items-center mb-4">
+        <h3 className="text-lg font-semibold text-gray-800">
+          Image {hasResults && `+ ${analysisMode === 'segmentation' ? 'Segmentation' : 'Object Detection'}`}
+        </h3>
+        {selectedBoxIndices.size > 0 && (
+          <button
+            onClick={onClearSelection}
+            className="text-sm text-blue-600 hover:text-blue-800 underline"
+          >
+            Show All {analysisMode === 'segmentation' ? 'Segments' : 'Boxes'}
+          </button>
+        )}
+      </div>
+      <div className="flex justify-center">
+        <ImageCanvas 
+          imageUrl={currentImage} 
+          boxes={analysisMode === 'detection' ? (selectedBoxIndices.size > 0 ? boxes.filter((_, index) => selectedBoxIndices.has(index)) : boxes) : []}
+          segments={analysisMode === 'segmentation' ? (selectedBoxIndices.size > 0 ? segments.filter((_, index) => selectedBoxIndices.has(index)) : segments) : []}
+        />
+      </div>
+      <ObjectDetectionSummary 
+        boxes={analysisMode === 'detection' ? boxes : []}
+        segments={analysisMode === 'segmentation' ? segments : []}
+        selectedBoxIndices={selectedBoxIndices}
+        onToggleBox={onToggleBox}
+      />
     </div>
-    <ObjectDetectionSummary boxes={boxes} />
-  </div>
-);
+  );
+};
 
 const LoadingCard: React.FC = () => (
-  <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-6">
+  <motion.div 
+    className="bg-white rounded-2xl shadow-lg border border-gray-100 p-6"
+    initial={{ opacity: 0, scale: 0.95 }}
+    animate={{ opacity: 1, scale: 1 }}
+    transition={{ duration: 0.3 }}
+  >
     <div className="flex items-center justify-center space-x-2">
       <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
-      <span className="text-lg text-gray-600">Analyzing image(s)...</span>
+      <motion.span 
+        className="text-lg text-gray-600"
+        animate={{ opacity: [0.5, 1, 0.5] }}
+        transition={{ duration: 1.5, repeat: Infinity }}
+      >
+        Analyzing image(s)...
+      </motion.span>
     </div>
-  </div>
+  </motion.div>
 );
 
 const ErrorCard: React.FC<{ error: string }> = ({ error }) => (
-  <div className="bg-red-50 border border-red-200 rounded-2xl p-6">
+  <motion.div 
+    className="bg-red-50 border border-red-200 rounded-2xl p-6"
+    initial={{ opacity: 0, scale: 0.95, x: -20 }}
+    animate={{ opacity: 1, scale: 1, x: 0 }}
+    transition={{ duration: 0.4, type: "spring", stiffness: 300 }}
+  >
     <div className="flex items-center gap-3">
-      <div className="w-8 h-8 bg-red-100 rounded-full flex items-center justify-center">
+      <motion.div 
+        className="w-8 h-8 bg-red-100 rounded-full flex items-center justify-center"
+        animate={{ rotate: [0, 10, -10, 0] }}
+        transition={{ duration: 0.5, delay: 0.2 }}
+      >
         <svg className="w-4 h-4 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
         </svg>
-      </div>
+      </motion.div>
       <div>
         <h3 className="font-semibold text-red-800">Analysis Failed</h3>
         <p className="text-red-700 text-sm">{error}</p>
       </div>
     </div>
-  </div>
+  </motion.div>
 );
 
 const AnalysisResultsCard: React.FC<{
   description: string;
   usage: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number } | null;
-}> = ({ description, usage }) => (
-  <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-6">
-    <div className="flex items-center gap-3 mb-6">
-      <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-blue-600 rounded-xl flex items-center justify-center">
-        <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a9 9 0 117.072 0l-.548.547A3.374 3.374 0 0014.846 21H9.154a3.374 3.374 0 00-2.53-1.098l-.548-.549z" />
-        </svg>
-      </div>
-      <div>
-        <h3 className="text-xl font-bold text-gray-800">AI Analysis</h3>
-        <p className="text-sm text-gray-600">Detailed object detection and description</p>
-      </div>
-    </div>
+  boxes: Array<{ label: string; x: number; y: number; width: number; height: number; confidence?: number }>;
+  segments: Array<{ label: string; points: Array<{ x: number; y: number }>; confidence?: number; pixelCoverage?: number }>;
+  selectedBoxIndices: Set<number>;
+}> = ({ description, usage, boxes, segments, selectedBoxIndices }) => {
+  
+  // Function to highlight text based on selected objects (works for both boxes and segments)
+  const highlightSelectedObjects = (text: string): string => {
+    if (selectedBoxIndices.size === 0) return text;
     
-    <div className="prose prose-slate max-w-none text-gray-700 leading-relaxed">
-      <ReactMarkdown 
-        components={{
-          h3: ({children}) => <h3 className="text-lg font-semibold text-gray-800 mt-6 mb-3 flex items-center gap-2"><span className="w-2 h-2 bg-blue-500 rounded-full"></span>{children}</h3>,
-          h4: ({children}) => <h4 className="text-base font-medium text-gray-700 mt-4 mb-2">{children}</h4>,
-          ul: ({children}) => <ul className="list-disc list-inside space-y-1 ml-4">{children}</ul>,
-          li: ({children}) => <li className="text-gray-600">{children}</li>,
-          code: ({children}) => <code className="bg-blue-50 text-blue-700 px-2 py-1 rounded text-sm font-mono border">{children}</code>,
-          strong: ({children}) => <strong className="font-semibold text-gray-800">{children}</strong>,
-          p: ({children}) => <p className="mb-3 text-gray-700 leading-relaxed">{children}</p>
-        }}
+    let highlightedText = text;
+    
+    // For each selected item, highlight its label and relevant info
+    selectedBoxIndices.forEach(index => {
+      // Handle both boxes and segments
+      const box = boxes[index];
+      const segment = segments[index];
+      
+      if (box) {
+        // Highlight the object label (case insensitive)
+        const cleanLabel = box.label.replace(/^plaintext\s*/i, "");
+        const labelRegex = new RegExp(`(${cleanLabel.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
+        highlightedText = highlightedText.replace(labelRegex, '<mark class="bg-blue-200 text-blue-900 px-1 rounded">$1</mark>');
+        
+        // For bounding boxes, highlight coordinates
+        const coordString = `[${box.x}, ${box.y}, ${box.width}, ${box.height}]`;
+        const coordRegex = new RegExp(`\\[${box.x},\\s*${box.y},\\s*${box.width},\\s*${box.height}\\]`, 'g');
+        highlightedText = highlightedText.replace(coordRegex, `<mark class="bg-yellow-200 text-yellow-900 px-1 rounded font-mono text-xs">${coordString}</mark>`);
+      }
+      
+      if (segment) {
+        // Highlight the object label (case insensitive)
+        const cleanLabel = segment.label.replace(/^plaintext\s*/i, "");
+        const labelRegex = new RegExp(`(${cleanLabel.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
+        highlightedText = highlightedText.replace(labelRegex, '<mark class="bg-blue-200 text-blue-900 px-1 rounded">$1</mark>');
+        
+        // For segments, highlight pixel coverage if available
+        if (segment.pixelCoverage !== undefined && segment.pixelCoverage !== null) {
+          const coverageRegex = new RegExp(`(${segment.pixelCoverage.toFixed(1)}%|${Math.round(segment.pixelCoverage)}%)`, 'g');
+          highlightedText = highlightedText.replace(coverageRegex, '<mark class="bg-green-200 text-green-900 px-1 rounded font-mono text-xs">$1</mark>');
+        }
+      }
+    });
+    
+    return highlightedText;
+  };
+
+  return (
+    <motion.div 
+      className="bg-white rounded-2xl shadow-lg border border-gray-100 p-6"
+      initial={{ opacity: 0, y: 20, scale: 0.95 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      transition={{ duration: 0.5, type: "spring", stiffness: 200 }}
+    >
+      <motion.div 
+        className="flex items-center gap-3 mb-4"
+        initial={{ opacity: 0, x: -20 }}
+        animate={{ opacity: 1, x: 0 }}
+        transition={{ duration: 0.4, delay: 0.2 }}
       >
-        {description}
-      </ReactMarkdown>
-    </div>
-    
-    {usage && (
-      <div className="mt-6 pt-4 border-t border-gray-200">
-        <h4 className="text-sm font-semibold text-gray-600 mb-3">API Usage</h4>
-        <div className="grid grid-cols-3 gap-4">
-          <div className="text-center p-3 bg-gray-50 rounded-lg">
-            <div className="text-lg font-bold text-gray-800">{isNaN(usage.prompt_tokens || 0) ? 0 : (usage.prompt_tokens || 0)}</div>
-            <div className="text-xs text-gray-500">Prompt</div>
-          </div>
-          <div className="text-center p-3 bg-gray-50 rounded-lg">
-            <div className="text-lg font-bold text-gray-800">{isNaN(usage.completion_tokens || 0) ? 0 : (usage.completion_tokens || 0)}</div>
-            <div className="text-xs text-gray-500">Response</div>
-          </div>
-          <div className="text-center p-3 bg-blue-50 rounded-lg">
-            <div className="text-lg font-bold text-blue-600">{isNaN(usage.total_tokens || 0) ? 0 : (usage.total_tokens || 0)}</div>
-            <div className="text-xs text-blue-500">Total</div>
+        <motion.div 
+          className="w-8 h-8 bg-gradient-to-br from-purple-500 to-blue-600 rounded-xl flex items-center justify-center"
+          whileHover={{ scale: 1.1, rotate: 5 }}
+          transition={{ type: "spring", stiffness: 400 }}
+        >
+          <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a9 9 0 117.072 0l-.548.547A3.374 3.374 0 0014.846 21H9.154a3.374 3.374 0 00-2.53-1.098l-.548-.549z" />
+          </svg>
+        </motion.div>
+        <div>
+          <h3 className="text-lg font-bold text-gray-800">AI Analysis</h3>
+          <p className="text-xs text-gray-600">
+            {segments.length > 0 ? 'Detailed segmentation and pixel coverage' : 'Detailed object detection and description'}
+          </p>
+        </div>
+      </motion.div>
+      
+      <div className="prose prose-slate max-w-none text-gray-700 leading-relaxed text-sm">
+        <div 
+          dangerouslySetInnerHTML={{ 
+            __html: highlightSelectedObjects(description)
+              .replace(/\*\*(.*?)\*\*/g, '<strong class="font-semibold text-gray-800">$1</strong>')
+              .replace(/### (.*?)(\n|$)/g, '<h3 class="text-base font-semibold text-gray-800 mt-4 mb-2 flex items-center gap-2"><span class="w-1.5 h-1.5 bg-blue-500 rounded-full"></span>$1</h3>')
+              .replace(/#### (.*?)(\n|$)/g, '<h4 class="text-sm font-medium text-gray-700 mt-3 mb-1">$1</h4>')
+              .replace(/^\* (.*?)(\n|$)/gm, '<li class="text-gray-600 text-sm ml-4">$1</li>')
+              .replace(/\n\n/g, '</p><p class="mb-2 text-gray-700 leading-relaxed text-sm">')
+              .replace(/^(?!<[hl])/gm, '<p class="mb-2 text-gray-700 leading-relaxed text-sm">')
+              .replace(/$(?!<\/)/gm, '</p>')
+          }}
+        />
+      </div>
+      
+      {usage && (
+        <div className="mt-4 pt-3 border-t border-gray-200">
+          <h4 className="text-xs font-semibold text-gray-600 mb-2">API Usage</h4>
+          <div className="grid grid-cols-3 gap-2">
+            <div className="text-center p-2 bg-gray-50 rounded-lg">
+              <div className="text-sm font-bold text-gray-800">{isNaN(usage.prompt_tokens || 0) ? 0 : (usage.prompt_tokens || 0)}</div>
+              <div className="text-xs text-gray-500">Prompt</div>
+            </div>
+            <div className="text-center p-2 bg-gray-50 rounded-lg">
+              <div className="text-sm font-bold text-gray-800">{isNaN(usage.completion_tokens || 0) ? 0 : (usage.completion_tokens || 0)}</div>
+              <div className="text-xs text-gray-500">Response</div>
+            </div>
+            <div className="text-center p-2 bg-blue-50 rounded-lg">
+              <div className="text-sm font-bold text-blue-600">{isNaN(usage.total_tokens || 0) ? 0 : (usage.total_tokens || 0)}</div>
+              <div className="text-xs text-blue-500">Total</div>
+            </div>
           </div>
         </div>
-      </div>
-    )}
-  </div>
-);
+      )}
+    </motion.div>
+  );
+};
 
 const InstructionsSection: React.FC = () => (
   <div className="mt-12 bg-white rounded-2xl shadow-lg border border-gray-100 p-8">
@@ -420,17 +575,17 @@ const InstructionsSection: React.FC = () => (
       <div>
         <h4 className="font-medium text-gray-700 mb-2">🎯 Object Detection</h4>
         <ul className="space-y-1 text-gray-600 text-sm">
-          <li>• Enable to detect and locate objects</li>
-          <li>• Shows bounding boxes with labels</li>
-          <li>• Color-coded for easy identification</li>
+          <li>• Detect objects with bounding boxes</li>
+          <li>• Shows exact coordinates and sizes</li>
+          <li>• Click objects to highlight in analysis</li>
         </ul>
       </div>
       <div>
-        <h4 className="font-medium text-gray-700 mb-2">📊 Analysis</h4>
+        <h4 className="font-medium text-gray-700 mb-2">🧩 Segmentation</h4>
         <ul className="space-y-1 text-gray-600 text-sm">
-          <li>• Detailed AI description of images</li>
-          <li>• Token usage tracking</li>
-          <li>• Comprehensive error handling</li>
+          <li>• Precise object boundaries with polygons</li>
+          <li>• Calculate pixel coverage percentages</li>
+          <li>• Perfect for detailed analysis</li>
         </ul>
       </div>
     </div>

@@ -1,20 +1,22 @@
 import { useEffect, useRef } from 'react';
-import { BoundingBox } from '@/types/api';
-import { calculateCanvasDimensions, drawBoundingBoxes } from '@/utils/imageProcessing';
+import { BoundingBox, SegmentationPolygon } from '@/types/api';
+import { calculateCanvasDimensions, drawBoundingBoxes, drawSegmentationPolygons } from '@/utils/imageProcessing';
 
 interface ImageCanvasProps {
   imageUrl: string;
-  boxes: BoundingBox[];
+  boxes?: BoundingBox[];
+  segments?: SegmentationPolygon[];
   className?: string;
 }
 
 /**
- * Canvas component for displaying images with bounding box overlays
- * Handles image rendering and object detection visualization
+ * Canvas component for displaying images with bounding box or segmentation overlays
+ * Handles image rendering and object detection/segmentation visualization
  */
 export const ImageCanvas: React.FC<ImageCanvasProps> = ({
   imageUrl,
-  boxes,
+  boxes = [],
+  segments = [],
   className = '',
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -43,8 +45,12 @@ export const ImageCanvas: React.FC<ImageCanvasProps> = ({
       ctx.clearRect(0, 0, width, height);
       ctx.drawImage(img, 0, 0, width, height);
 
-      // Draw bounding boxes if available
-      if (boxes.length > 0) {
+      // Draw overlays based on what data is available
+      if (segments.length > 0) {
+        // Draw segmentation polygons
+        drawSegmentationPolygons(ctx, segments, scale);
+      } else if (boxes.length > 0) {
+        // Draw bounding boxes
         drawBoundingBoxes(ctx, boxes, scale);
       }
     };
@@ -54,13 +60,13 @@ export const ImageCanvas: React.FC<ImageCanvasProps> = ({
     };
 
     img.src = imageUrl;
-  }, [imageUrl, boxes]);
+  }, [imageUrl, boxes, segments]);
 
   return (
     <canvas
       ref={canvasRef}
       className={`max-w-full h-auto rounded-lg shadow-md border border-gray-200 ${className}`}
-      aria-label="Image analysis canvas with object detection overlays"
+      aria-label={`Image analysis canvas with ${segments.length > 0 ? 'segmentation' : 'object detection'} overlays`}
     />
   );
 }; 
