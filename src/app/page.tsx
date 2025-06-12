@@ -442,6 +442,8 @@ const AnalysisResultsCard: React.FC<{
   segments: Array<{ label: string; points: Array<{ x: number; y: number }>; confidence?: number; pixelCoverage?: number }>;
   selectedBoxIndices: Set<number>;
 }> = ({ description, usage, boxes, segments, selectedBoxIndices }) => {
+  // Ensure description is always a string
+  const safeDescription = typeof description === 'string' ? description : JSON.stringify(description) || '';
   
   // Function to highlight text based on selected objects (works for both boxes and segments)
   const highlightSelectedObjects = (text: string): string => {
@@ -517,7 +519,7 @@ const AnalysisResultsCard: React.FC<{
       <div className="prose prose-slate max-w-none text-gray-700 leading-relaxed text-sm">
         <div 
           dangerouslySetInnerHTML={{ 
-            __html: highlightSelectedObjects(description)
+            __html: highlightSelectedObjects(safeDescription)
               .replace(/\*\*(.*?)\*\*/g, '<strong class="font-semibold text-gray-800">$1</strong>')
               .replace(/### (.*?)(\n|$)/g, '<h3 class="text-base font-semibold text-gray-800 mt-4 mb-2 flex items-center gap-2"><span class="w-1.5 h-1.5 bg-blue-500 rounded-full"></span>$1</h3>')
               .replace(/#### (.*?)(\n|$)/g, '<h4 class="text-sm font-medium text-gray-700 mt-3 mb-1">$1</h4>')
