@@ -20,11 +20,27 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
   onModelChange,
   disabled = false,
 }) => {
+  const selectedOption = MODEL_OPTIONS.find(option => option.value === selectedModel);
+  
   return (
-    <div className="space-y-2">
+    <div className="space-y-3">
       <label htmlFor="model-select" className="block text-sm font-medium text-gray-700">
         Select Model
       </label>
+      
+      {/* Current Selection Display */}
+      <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+        <div className="flex items-center gap-2">
+          <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+          <span className="text-sm font-medium text-blue-800">Selected Model:</span>
+          <span className="text-sm font-semibold text-blue-900">{selectedOption?.label}</span>
+        </div>
+        <p className="text-xs text-blue-600 mt-1 ml-4">
+          {selectedOption?.description}
+        </p>
+      </div>
+      
+      {/* Dropdown Selector */}
       <select
         id="model-select"
         value={selectedModel}
@@ -38,9 +54,6 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
           </option>
         ))}
       </select>
-      <p className="text-xs text-gray-500">
-        {MODEL_OPTIONS.find(option => option.value === selectedModel)?.description}
-      </p>
     </div>
   );
 }; 

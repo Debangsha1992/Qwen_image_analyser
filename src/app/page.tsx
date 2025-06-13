@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useRef } from 'react';
-import ReactMarkdown from 'react-markdown';
 import { motion } from 'framer-motion';
 import { InputMethod, AnalysisMode, ModelType } from '@/types/api';
 import { useImageAnalysis } from '@/hooks/useImageAnalysis';
@@ -94,9 +93,6 @@ export default function Home(): React.JSX.Element {
   const clearBoxSelection = (): void => {
     setSelectedBoxIndices(new Set());
   };
-
-  // Get current objects based on analysis mode
-  const currentObjects = analysisMode === 'segmentation' ? segments : boxes;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100">
