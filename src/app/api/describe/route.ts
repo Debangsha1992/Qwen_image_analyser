@@ -206,8 +206,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
     // Make API call
     const completion = await client.chat.completions.create(apiOptions);
-    const descriptionRaw = completion.choices[0]?.message?.content;
-    const description = typeof descriptionRaw === 'string' ? descriptionRaw : JSON.stringify(descriptionRaw) || 'No description available';
+    const description = completion.choices[0]?.message?.content || 'No description available';
 
     // Process results
     const boxes = processBoundingBoxes(description, enableBoundingBoxes);

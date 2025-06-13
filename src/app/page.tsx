@@ -442,8 +442,6 @@ const AnalysisResultsCard: React.FC<{
   segments: Array<{ label: string; points: Array<{ x: number; y: number }>; confidence?: number; pixelCoverage?: number }>;
   selectedBoxIndices: Set<number>;
 }> = ({ description, usage, boxes, segments, selectedBoxIndices }) => {
-  // Ensure description is always a string
-  const safeDescription = typeof description === 'string' ? description : JSON.stringify(description) || '';
   
   // Function to highlight text based on selected objects (works for both boxes and segments)
   const highlightSelectedObjects = (text: string): string => {
@@ -519,14 +517,16 @@ const AnalysisResultsCard: React.FC<{
       <div className="prose prose-slate max-w-none text-gray-700 leading-relaxed text-sm">
         <div 
           dangerouslySetInnerHTML={{ 
-            __html: highlightSelectedObjects(safeDescription)
+            __html: highlightSelectedObjects(description)
               .replace(/\*\*(.*?)\*\*/g, '<strong class="font-semibold text-gray-800">$1</strong>')
               .replace(/### (.*?)(\n|$)/g, '<h3 class="text-base font-semibold text-gray-800 mt-4 mb-2 flex items-center gap-2"><span class="w-1.5 h-1.5 bg-blue-500 rounded-full"></span>$1</h3>')
               .replace(/#### (.*?)(\n|$)/g, '<h4 class="text-sm font-medium text-gray-700 mt-3 mb-1">$1</h4>')
               .replace(/^\* (.*?)(\n|$)/gm, '<li class="text-gray-600 text-sm ml-4">$1</li>')
+              .replace(/```([\s\S]*?)```/g, '<pre class="bg-gray-100 rounded p-2 overflow-x-auto my-2"><code>$1</code></pre>')
+              .replace(/((\[\d+,\s*\d+\](,?\s*)?)+)/g, '<pre class="bg-gray-100 rounded p-2 overflow-x-auto my-2"><code>$1</code></pre>')
               .replace(/\n\n/g, '</p><p class="mb-2 text-gray-700 leading-relaxed text-sm">')
-              .replace(/^(?!<[hl])/gm, '<p class="mb-2 text-gray-700 leading-relaxed text-sm">')
-              .replace(/$(?!<\/)/gm, '</p>')
+              .replace(/^(?!<[hlp])/gm, '<p class="mb-2 text-gray-700 leading-relaxed text-sm">')
+              .replace(/$(?!<\/p>)/gm, '</p>')
           }}
         />
       </div>
