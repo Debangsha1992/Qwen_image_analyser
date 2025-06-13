@@ -8,42 +8,50 @@ export const parseBoundingBoxes = (description: string): BoundingBox[] => {
   const boxes: BoundingBox[] = [];
 
   try {
-    // Look for coordinate patterns in the response text
-    // Patterns: `[x, y, width, height]` or **Label**: `[x, y, width, height]`
-    const coordinateRegex = /`\[(\d+),\s*(\d+),\s*(\d+),\s*(\d+)\]`(?:\s*\([^)]+\))?/g;
-    const matches = Array.from(description.matchAll(coordinateRegex));
+    // Look for labeled coordinates only - coordinates that follow a clear object label
+    // Pattern: **ObjectName**: `[x, y, width, height]` or similar variations
+    const labeledCoordinateRegex = /\*\*([^*]+)\*\*[^`]*`\[(\d+),\s*(\d+),\s*(\d+),\s*(\d+)\]`(?:\s*\([^)]+\))?/g;
+    const labelMatches = Array.from(description.matchAll(labeledCoordinateRegex));
 
-    // Also look for labels that precede the coordinates
-    const labelRegex = /\*\*([^*]+)\*\*[^`]*`\[(\d+),\s*(\d+),\s*(\d+),\s*(\d+)\]`(?:\s*\([^)]+\))?/g;
-    const labelMatches = Array.from(description.matchAll(labelRegex));
-
-    // Extract from labeled matches first
+    // Extract from labeled matches only
     labelMatches.forEach((match) => {
       const [, label, x, y, width, height] = match;
-      boxes.push({
-        label: sanitizeLabel(label),
-        x: parseInt(x, 10),
-        y: parseInt(y, 10),
-        width: parseInt(width, 10),
-        height: parseInt(height, 10),
-        confidence: 0.85,
-      });
+      const cleanLabel = sanitizeLabel(label);
+      
+      // Filter out generic coordinate references that aren't actual objects
+      if (isValidObjectLabel(cleanLabel)) {
+        boxes.push({
+          label: cleanLabel,
+          x: parseInt(x, 10),
+          y: parseInt(y, 10),
+          width: parseInt(width, 10),
+          height: parseInt(height, 10),
+          confidence: 0.85,
+        });
+      }
     });
 
-    // Add remaining unlabeled coordinates
-    if (labelMatches.length < matches.length) {
-      for (let i = labelMatches.length; i < matches.length; i++) {
-        const match = matches[i];
+    // Also look for object descriptions followed by coordinates on the same line
+    // Pattern: ObjectName at `[x, y, width, height]` or ObjectName located at `[x, y, width, height]`
+    const objectAtCoordinateRegex = /([A-Za-z][A-Za-z\s]+?)(?:\s+(?:at|located at|positioned at|found at))\s+`\[(\d+),\s*(\d+),\s*(\d+),\s*(\d+)\]`/g;
+    const objectMatches = Array.from(description.matchAll(objectAtCoordinateRegex));
+
+    objectMatches.forEach((match) => {
+      const [, label, x, y, width, height] = match;
+      const cleanLabel = sanitizeLabel(label);
+      
+      // Check if this object isn't already added and is a valid object
+      if (isValidObjectLabel(cleanLabel) && !boxes.some(box => box.label === cleanLabel)) {
         boxes.push({
-          label: `Object ${i + 1}`,
-          x: parseInt(match[1], 10),
-          y: parseInt(match[2], 10),
-          width: parseInt(match[3], 10),
-          height: parseInt(match[4], 10),
+          label: cleanLabel,
+          x: parseInt(x, 10),
+          y: parseInt(y, 10),
+          width: parseInt(width, 10),
+          height: parseInt(height, 10),
           confidence: 0.8,
         });
       }
-    }
+    });
 
     return boxes;
   } catch (parseError) {
@@ -57,6 +65,45 @@ export const parseBoundingBoxes = (description: string): BoundingBox[] => {
  */
 const sanitizeLabel = (label: string): string => {
   return label.replace(/\d+$/, '').trim();
+};
+
+/**
+ * Validates if a label represents an actual object rather than coordinate metadata
+ */
+const isValidObjectLabel = (label: string): boolean => {
+  const invalidLabels = [
+    'bounding box coordinates',
+    'bounding box coordinate',
+    'coordinates',
+    'coordinate',
+    'position',
+    'location',
+    'bbox',
+    'box coordinates',
+    'object coordinates',
+    'detection coordinates',
+    'coordinate data',
+    'coordinate information'
+  ];
+  
+  const normalizedLabel = label.toLowerCase().trim();
+  
+  // Filter out generic coordinate references
+  if (invalidLabels.includes(normalizedLabel)) {
+    return false;
+  }
+  
+  // Filter out very short labels that are likely not real objects
+  if (normalizedLabel.length < 3) {
+    return false;
+  }
+  
+  // Filter out labels that are just numbers or coordinates
+  if (/^\d+$/.test(normalizedLabel) || /^[\d\s,\[\]]+$/.test(normalizedLabel)) {
+    return false;
+  }
+  
+  return true;
 };
 
 /**
