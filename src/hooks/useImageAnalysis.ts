@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react';
 import axios from 'axios';
-import { AnalysisResponse, ErrorResponse, BoundingBox, SegmentationPolygon, ApiUsage, AnalysisMode } from '@/types/api';
+import { AnalysisResponse, ErrorResponse, BoundingBox, SegmentationPolygon, ApiUsage, AnalysisMode, ModelType } from '@/types/api';
 import { validateImageFile, isValidImageUrl } from '@/utils/imageProcessing';
 
 interface RateLimitInfo {
@@ -21,6 +21,7 @@ interface UseImageAnalysisReturn {
     file: File | null,
     imageUrl: string,
     analysisMode: AnalysisMode,
+    model?: ModelType,
     imageWidth?: number,
     imageHeight?: number
   ) => Promise<void>;
@@ -52,6 +53,7 @@ export const useImageAnalysis = (): UseImageAnalysisReturn => {
     file: File | null,
     imageUrl: string,
     analysisMode: AnalysisMode,
+    model: ModelType = 'qwen-vl-max',
     imageWidth: number = 800,
     imageHeight: number = 600
   ): Promise<void> => {
@@ -94,6 +96,7 @@ export const useImageAnalysis = (): UseImageAnalysisReturn => {
       
       formData.append('enableBoundingBoxes', enableBoundingBoxes.toString());
       formData.append('enableSegmentation', enableSegmentation.toString());
+      formData.append('model', model);
       formData.append('imageWidth', imageWidth.toString());
       formData.append('imageHeight', imageHeight.toString());
 

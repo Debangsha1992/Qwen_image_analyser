@@ -46,4 +46,5 @@ export interface ImageProcessingConfig {
 }
 
 export type InputMethod = 'url' | 'file';
-export type AnalysisMode = 'detection' | 'segmentation'; 
+export type AnalysisMode = 'detection' | 'segmentation';
+export type ModelType = 'qwen-vl-max' | 'qwen-vl-plus' | 'qwen-vl-max-2025-04-08'; 

@@ -3,12 +3,13 @@
 import { useState, useRef } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { motion } from 'framer-motion';
-import { InputMethod, AnalysisMode } from '@/types/api';
+import { InputMethod, AnalysisMode, ModelType } from '@/types/api';
 import { useImageAnalysis } from '@/hooks/useImageAnalysis';
 import { ImageCanvas } from '@/components/ImageCanvas';
 import { ObjectDetectionSummary } from '@/components/ObjectDetectionSummary';
 import { ImageInputCard } from '@/components/ImageInputCard';
 import { RateLimitCounter } from '@/components/RateLimitCounter';
+import { ModelSelector } from '@/components/ModelSelector';
 import { BoxSelectionProvider } from '@/context/BoxSelectionContext';
 
 const EXAMPLE_IMAGE_URL = 'https://dashscope.oss-cn-beijing.aliyuncs.com/images/dog_and_girl.jpeg';
@@ -22,6 +23,7 @@ export default function Home(): React.JSX.Element {
   const [imageUrl, setImageUrl] = useState('');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [analysisMode, setAnalysisMode] = useState<AnalysisMode>('detection');
+  const [selectedModel, setSelectedModel] = useState<ModelType>('qwen-vl-max');
   const [currentImage, setCurrentImage] = useState<string>('');
   const [inputMethod, setInputMethod] = useState<InputMethod>('file');
   const [selectedBoxIndices, setSelectedBoxIndices] = useState<Set<number>>(new Set());
@@ -52,7 +54,7 @@ export default function Home(): React.JSX.Element {
 
   const handleAnalyze = async (e: React.FormEvent): Promise<void> => {
     e.preventDefault();
-    await analyzeImage(selectedFile, imageUrl, analysisMode);
+    await analyzeImage(selectedFile, imageUrl, analysisMode, selectedModel);
   };
 
   const handleExampleImage = (): void => {
@@ -131,7 +133,9 @@ export default function Home(): React.JSX.Element {
             <div className="xl:col-span-1">
               <OptionsCard
                 analysisMode={analysisMode}
+                selectedModel={selectedModel}
                 onAnalysisModeChange={setAnalysisMode}
+                onModelChange={setSelectedModel}
               />
             </div>
             
@@ -275,40 +279,54 @@ const AnalysisSection: React.FC<AnalysisSectionProps> = ({
 
 const OptionsCard: React.FC<{ 
   analysisMode: AnalysisMode; 
+  selectedModel: ModelType;
   onAnalysisModeChange: (mode: AnalysisMode) => void; 
-}> = ({ analysisMode, onAnalysisModeChange }) => (
+  onModelChange: (model: ModelType) => void;
+}> = ({ analysisMode, selectedModel, onAnalysisModeChange, onModelChange }) => (
   <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-6">
     <h3 className="text-lg font-semibold text-gray-800 mb-4">Analysis Options</h3>
-    <div className="space-y-3">
-      <label className="flex items-center gap-3 cursor-pointer">
-        <input
-          type="radio"
-          name="analysisMode"
-          value="detection"
-          checked={analysisMode === 'detection'}
-          onChange={() => onAnalysisModeChange('detection')}
-          className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 focus:ring-blue-500"
-        />
-        <div>
-          <span className="font-medium text-gray-700">Object Detection</span>
-          <p className="text-sm text-gray-500">Detect objects with bounding boxes and coordinates</p>
-        </div>
-      </label>
+    <div className="space-y-4">
+      <div className="space-y-3">
+        <label className="flex items-center gap-3 cursor-pointer">
+          <input
+            type="radio"
+            name="analysisMode"
+            value="detection"
+            checked={analysisMode === 'detection'}
+            onChange={() => onAnalysisModeChange('detection')}
+            className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 focus:ring-blue-500"
+          />
+          <div>
+            <span className="font-medium text-gray-700">Object Detection</span>
+            <p className="text-sm text-gray-500">Detect objects with bounding boxes and coordinates</p>
+          </div>
+        </label>
+        
+        <label className="flex items-center gap-3 cursor-pointer">
+          <input
+            type="radio"
+            name="analysisMode"
+            value="segmentation"
+            checked={analysisMode === 'segmentation'}
+            onChange={() => onAnalysisModeChange('segmentation')}
+            className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 focus:ring-blue-500"
+          />
+          <div>
+            <span className="font-medium text-gray-700">Segmentation</span>
+            <p className="text-sm text-gray-500">Segment objects with precise boundaries and pixel coverage</p>
+          </div>
+        </label>
+      </div>
       
-      <label className="flex items-center gap-3 cursor-pointer">
-        <input
-          type="radio"
-          name="analysisMode"
-          value="segmentation"
-          checked={analysisMode === 'segmentation'}
-          onChange={() => onAnalysisModeChange('segmentation')}
-          className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 focus:ring-blue-500"
-        />
-        <div>
-          <span className="font-medium text-gray-700">Segmentation</span>
-          <p className="text-sm text-gray-500">Segment objects with precise boundaries and pixel coverage</p>
+      {analysisMode === 'detection' && (
+        <div className="pt-2 border-t border-gray-200">
+          <ModelSelector
+            selectedModel={selectedModel}
+            onModelChange={onModelChange}
+            disabled={false}
+          />
         </div>
-      </label>
+      )}
     </div>
   </div>
 );

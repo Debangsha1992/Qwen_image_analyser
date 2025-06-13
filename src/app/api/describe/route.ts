@@ -7,7 +7,6 @@ import { checkRateLimit, getClientIP, formatResetTime } from '@/utils/rateLimite
 
 // Configuration constants
 const API_CONFIG = {
-  model: 'qwen-vl-max',
   maxTokens: 1000,
   temperature: 0.7,
   maxFileSize: 10 * 1024 * 1024, // 10MB
@@ -159,6 +158,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const base64Input = body.imageBase64 as string;
     const enableBoundingBoxes = body.enableBoundingBoxes === 'true';
     const enableSegmentation = body.enableSegmentation === 'true';
+    const model = (body.model as string) || 'qwen-vl-max';
     const imageWidth = parseInt(body.imageWidth as string) || 800;
     const imageHeight = parseInt(body.imageHeight as string) || 600;
 
@@ -193,7 +193,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     ];
 
     const apiOptions = {
-      model: API_CONFIG.model,
+      model: model,
       messages: [
         {
           role: 'user' as const,
@@ -217,7 +217,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       boxes,
       segments,
       usage: completion.usage,
-      model: API_CONFIG.model,
+      model: model,
       boundingBoxesEnabled: enableBoundingBoxes,
       segmentationEnabled: enableSegmentation,
     }, {
