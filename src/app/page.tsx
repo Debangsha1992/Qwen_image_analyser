@@ -2,20 +2,22 @@
 
 import { useState, useRef } from 'react';
 import { motion } from 'framer-motion';
-import { InputMethod, AnalysisMode, ModelType } from '@/types/api';
+import { InputMethod, AnalysisMode, ModelType, SAM2Mode, SAM2Mask } from '@/types/api';
 import { useImageAnalysis } from '@/hooks/useImageAnalysis';
+import { useSAM2Segmentation } from '@/hooks/useSAM2Segmentation';
 import { ImageCanvas } from '@/components/ImageCanvas';
 import { ObjectDetectionSummary } from '@/components/ObjectDetectionSummary';
 import { ImageInputCard } from '@/components/ImageInputCard';
 import { RateLimitCounter } from '@/components/RateLimitCounter';
 import { ModelSelector } from '@/components/ModelSelector';
+import { SAM2ModeSelector } from '@/components/SAM2ModeSelector';
 import { BoxSelectionProvider } from '@/context/BoxSelectionContext';
 
 const EXAMPLE_IMAGE_URL = 'https://dashscope.oss-cn-beijing.aliyuncs.com/images/dog_and_girl.jpeg';
 
 /**
  * Main application component for AI image analysis
- * Provides file upload, URL input, and object detection/segmentation capabilities
+ * Provides file upload, URL input, object detection, segmentation, and SAM 2 capabilities
  */
 export default function Home(): React.JSX.Element {
   // State management
@@ -23,12 +25,23 @@ export default function Home(): React.JSX.Element {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [analysisMode, setAnalysisMode] = useState<AnalysisMode>('detection');
   const [selectedModel, setSelectedModel] = useState<ModelType>('qwen-vl-max');
+  const [sam2Mode, setSam2Mode] = useState<SAM2Mode>('everything');
   const [currentImage, setCurrentImage] = useState<string>('');
   const [inputMethod, setInputMethod] = useState<InputMethod>('file');
   const [selectedBoxIndices, setSelectedBoxIndices] = useState<Set<number>>(new Set());
 
   // Hooks
   const { description, boxes, segments, usage, loading, error, rateLimitInfo, analyzeImage, clearResults } = useImageAnalysis();
+  const { 
+    masks: sam2Masks, 
+    loading: sam2Loading, 
+    error: sam2Error, 
+    segmentImage: sam2SegmentImage, 
+    clearResults: clearSam2Results,
+    isServiceAvailable: sam2ServiceAvailable,
+    checkServiceHealth: checkSam2Health
+  } = useSAM2Segmentation();
+  
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Event handlers
@@ -40,6 +53,7 @@ export default function Home(): React.JSX.Element {
     const previewUrl = URL.createObjectURL(file);
     setCurrentImage(previewUrl);
     clearResults();
+    clearSam2Results();
   };
 
   const handleImageUrlChange = (url: string): void => {
@@ -48,12 +62,20 @@ export default function Home(): React.JSX.Element {
       setCurrentImage(url.trim());
       setSelectedFile(null);
       clearResults();
+      clearSam2Results();
     }
   };
 
   const handleAnalyze = async (e: React.FormEvent): Promise<void> => {
     e.preventDefault();
-    await analyzeImage(selectedFile, imageUrl, analysisMode, selectedModel);
+    
+    if (analysisMode === 'sam2') {
+      // Use SAM 2 for segmentation
+      await sam2SegmentImage(selectedFile, imageUrl, sam2Mode);
+    } else {
+      // Use existing Qwen-VL analysis
+      await analyzeImage(selectedFile, imageUrl, analysisMode, selectedModel);
+    }
   };
 
   const handleExampleImage = (): void => {
@@ -71,6 +93,7 @@ export default function Home(): React.JSX.Element {
     setSelectedFile(null);
     setCurrentImage('');
     clearResults();
+    clearSam2Results();
     setSelectedBoxIndices(new Set());
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
@@ -93,6 +116,10 @@ export default function Home(): React.JSX.Element {
   const clearBoxSelection = (): void => {
     setSelectedBoxIndices(new Set());
   };
+
+  // Determine current loading state and error
+  const isLoading = loading || sam2Loading;
+  const currentError = error || sam2Error;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100">
@@ -130,8 +157,12 @@ export default function Home(): React.JSX.Element {
               <OptionsCard
                 analysisMode={analysisMode}
                 selectedModel={selectedModel}
+                sam2Mode={sam2Mode}
+                sam2ServiceAvailable={sam2ServiceAvailable}
                 onAnalysisModeChange={setAnalysisMode}
                 onModelChange={setSelectedModel}
+                onSam2ModeChange={setSam2Mode}
+                onCheckSam2Health={checkSam2Health}
               />
             </div>
             
@@ -142,7 +173,7 @@ export default function Home(): React.JSX.Element {
                 resetTime={rateLimitInfo ? new Date(rateLimitInfo.resetTime).getTime() : undefined}
               />
               <ActionButtons
-                loading={loading}
+                loading={isLoading}
                 hasInput={!!(selectedFile || imageUrl)}
                 analysisMode={analysisMode}
                 onAnalyze={handleAnalyze}
@@ -176,6 +207,7 @@ export default function Home(): React.JSX.Element {
                   currentImage={currentImage}
                   boxes={analysisMode === 'detection' ? boxes : []}
                   segments={analysisMode === 'segmentation' ? segments : []}
+                  sam2Masks={analysisMode === 'sam2' ? sam2Masks : []}
                   analysisMode={analysisMode}
                   selectedBoxIndices={selectedBoxIndices}
                   onToggleBox={toggleBoxSelection}
@@ -192,12 +224,13 @@ export default function Home(): React.JSX.Element {
               className="xl:col-span-1"
             >
               <AnalysisSection
-                loading={loading}
-                error={error}
+                loading={isLoading}
+                error={currentError}
                 description={description}
                 usage={usage}
                 boxes={analysisMode === 'detection' ? boxes : []}
                 segments={analysisMode === 'segmentation' ? segments : []}
+                sam2Masks={analysisMode === 'sam2' ? sam2Masks : []}
                 selectedBoxIndices={selectedBoxIndices}
               />
             </motion.div>
@@ -251,6 +284,7 @@ interface AnalysisSectionProps {
   usage: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number } | null;
   boxes: Array<{ label: string; x: number; y: number; width: number; height: number; confidence?: number }>;
   segments: Array<{ label: string; points: Array<{ x: number; y: number }>; confidence?: number; pixelCoverage?: number }>;
+  sam2Masks: SAM2Mask[];
   selectedBoxIndices: Set<number>;
 }
 
@@ -264,21 +298,35 @@ const AnalysisSection: React.FC<AnalysisSectionProps> = ({
   usage,
   boxes,
   segments,
+  sam2Masks,
   selectedBoxIndices,
 }) => (
   <div className="space-y-6">
     {loading && <LoadingCard />}
     {error && <ErrorCard error={error} />}
-    {description && <AnalysisResultsCard description={description} usage={usage} boxes={boxes} segments={segments} selectedBoxIndices={selectedBoxIndices} />}
+    {description && <AnalysisResultsCard description={description} usage={usage} boxes={boxes} segments={segments} sam2Masks={sam2Masks} selectedBoxIndices={selectedBoxIndices} />}
   </div>
 );
 
 const OptionsCard: React.FC<{ 
   analysisMode: AnalysisMode; 
   selectedModel: ModelType;
+  sam2Mode: SAM2Mode;
+  sam2ServiceAvailable: boolean;
   onAnalysisModeChange: (mode: AnalysisMode) => void; 
   onModelChange: (model: ModelType) => void;
-}> = ({ analysisMode, selectedModel, onAnalysisModeChange, onModelChange }) => (
+  onSam2ModeChange: (mode: SAM2Mode) => void;
+  onCheckSam2Health: () => Promise<boolean>;
+}> = ({ 
+  analysisMode, 
+  selectedModel, 
+  sam2Mode, 
+  sam2ServiceAvailable,
+  onAnalysisModeChange, 
+  onModelChange, 
+  onSam2ModeChange,
+  onCheckSam2Health
+}) => (
   <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-6">
     <h3 className="text-lg font-semibold text-gray-800 mb-4">Analysis Options</h3>
     <div className="space-y-4">
@@ -308,8 +356,37 @@ const OptionsCard: React.FC<{
             className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 focus:ring-blue-500"
           />
           <div>
-            <span className="font-medium text-gray-700">Segmentation</span>
+            <span className="font-medium text-gray-700">Segmentation (Qwen-VL)</span>
             <p className="text-sm text-gray-500">Segment objects with precise boundaries and pixel coverage</p>
+          </div>
+        </label>
+
+        <label className="flex items-center gap-3 cursor-pointer">
+          <input
+            type="radio"
+            name="analysisMode"
+            value="sam2"
+            checked={analysisMode === 'sam2'}
+            onChange={() => onAnalysisModeChange('sam2')}
+            className="w-4 h-4 text-green-600 bg-gray-100 border-gray-300 focus:ring-green-500"
+          />
+          <div className="flex-1">
+            <div className="flex items-center gap-2">
+              <span className="font-medium text-gray-700">SAM 2 Segmentation</span>
+              <div className={`w-2 h-2 rounded-full ${sam2ServiceAvailable ? 'bg-green-400' : 'bg-red-400'}`} />
+              <span className={`text-xs ${sam2ServiceAvailable ? 'text-green-600' : 'text-red-600'}`}>
+                {sam2ServiceAvailable ? 'Available' : 'Offline'}
+              </span>
+            </div>
+            <p className="text-sm text-gray-500">High-precision segmentation using Meta's SAM 2</p>
+            {!sam2ServiceAvailable && (
+              <button
+                onClick={onCheckSam2Health}
+                className="text-xs text-blue-600 hover:text-blue-800 underline mt-1"
+              >
+                Check Service Status
+              </button>
+            )}
           </div>
         </label>
       </div>
@@ -320,6 +397,16 @@ const OptionsCard: React.FC<{
             selectedModel={selectedModel}
             onModelChange={onModelChange}
             disabled={false}
+          />
+        </div>
+      )}
+
+      {analysisMode === 'sam2' && (
+        <div className="pt-2 border-t border-gray-200">
+          <SAM2ModeSelector
+            selectedMode={sam2Mode}
+            onModeChange={onSam2ModeChange}
+            disabled={!sam2ServiceAvailable}
           />
         </div>
       )}
@@ -365,25 +452,34 @@ const ImageDisplayCard: React.FC<{
   currentImage: string;
   boxes: Array<{ label: string; x: number; y: number; width: number; height: number; confidence?: number }>;
   segments: Array<{ label: string; points: Array<{ x: number; y: number }>; confidence?: number; pixelCoverage?: number }>;
+  sam2Masks: SAM2Mask[];
   analysisMode: AnalysisMode;
   selectedBoxIndices: Set<number>;
   onToggleBox: (index: number) => void;
   onClearSelection: () => void;
-}> = ({ currentImage, boxes, segments, analysisMode, selectedBoxIndices, onToggleBox, onClearSelection }) => {
-  const hasResults = (analysisMode === 'detection' && boxes.length > 0) || (analysisMode === 'segmentation' && segments.length > 0);
+}> = ({ currentImage, boxes, segments, sam2Masks, analysisMode, selectedBoxIndices, onToggleBox, onClearSelection }) => {
+  const hasResults = (analysisMode === 'detection' && boxes.length > 0) || 
+                     (analysisMode === 'segmentation' && segments.length > 0) ||
+                     (analysisMode === 'sam2' && sam2Masks.length > 0);
+  
+  const getDisplayTitle = () => {
+    if (analysisMode === 'sam2') return 'SAM 2 Segmentation';
+    if (analysisMode === 'segmentation') return 'Segmentation';
+    return 'Object Detection';
+  };
   
   return (
     <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-6">
       <div className="flex justify-between items-center mb-4">
         <h3 className="text-lg font-semibold text-gray-800">
-          Image {hasResults && `+ ${analysisMode === 'segmentation' ? 'Segmentation' : 'Object Detection'}`}
+          Image {hasResults && `+ ${getDisplayTitle()}`}
         </h3>
         {selectedBoxIndices.size > 0 && (
           <button
             onClick={onClearSelection}
             className="text-sm text-blue-600 hover:text-blue-800 underline"
           >
-            Show All {analysisMode === 'segmentation' ? 'Segments' : 'Boxes'}
+            Show All {analysisMode === 'sam2' ? 'Masks' : analysisMode === 'segmentation' ? 'Segments' : 'Boxes'}
           </button>
         )}
       </div>
@@ -400,6 +496,23 @@ const ImageDisplayCard: React.FC<{
         selectedBoxIndices={selectedBoxIndices}
         onToggleBox={onToggleBox}
       />
+      {analysisMode === 'sam2' && sam2Masks.length > 0 && (
+        <div className="mt-4">
+          <h4 className="text-md font-semibold text-gray-700 mb-2">SAM 2 Masks ({sam2Masks.length})</h4>
+          <div className="grid grid-cols-2 gap-2">
+            {sam2Masks.map((mask, index) => (
+              <div key={mask.id} className="bg-gray-50 rounded-lg p-2">
+                <div className="text-xs text-gray-600">
+                  Mask {mask.id + 1} - Score: {(mask.score * 100).toFixed(1)}%
+                </div>
+                <div className="text-xs text-gray-500">
+                  Area: {mask.area.toLocaleString()} pixels
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 };
@@ -454,8 +567,9 @@ const AnalysisResultsCard: React.FC<{
   usage: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number } | null;
   boxes: Array<{ label: string; x: number; y: number; width: number; height: number; confidence?: number }>;
   segments: Array<{ label: string; points: Array<{ x: number; y: number }>; confidence?: number; pixelCoverage?: number }>;
+  sam2Masks: SAM2Mask[];
   selectedBoxIndices: Set<number>;
-}> = ({ description, usage, boxes, segments, selectedBoxIndices }) => {
+}> = ({ description, usage, boxes, segments, sam2Masks, selectedBoxIndices }) => {
   
   // Function to highlight text based on selected objects (works for both boxes and segments)
   const highlightSelectedObjects = (text: string): string => {
